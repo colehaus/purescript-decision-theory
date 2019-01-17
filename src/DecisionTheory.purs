@@ -1,4 +1,4 @@
-module Main where
+module DecisionTheory where
 
 import Prelude hiding ((>=), (>))
 
@@ -8,8 +8,8 @@ import Data.List as List
 import Data.Maybe (Maybe(..))
 import Data.Ord.Partial (class PartialOrd, (>=), (>))
 import Data.Tuple (Tuple(..))
-import Table (Table)
-import Table as Table
+import Data.Table (Table)
+import Data.Table as Table
 
 dominatesWeakly ::
   forall rowId columnId cell column.

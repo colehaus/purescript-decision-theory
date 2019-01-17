@@ -11,7 +11,7 @@ import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 import Partial.Unsafe (unsafePartial)
-import Table as Table
+import Data.Table as Table
 
 import Effect (Effect)
 import Test.Spec (describe, it)
@@ -19,7 +19,7 @@ import Test.Spec.Assertions (shouldEqual)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (run)
 
-import Main
+import DecisionTheory
 
 fromRightEx :: forall l r. Either l r -> r
 fromRightEx x = unsafePartial $ Either.fromRight x
