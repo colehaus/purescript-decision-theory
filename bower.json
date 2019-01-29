@@ -13,7 +13,6 @@
     "purescript-partial": "^2.0.0",
     "purescript-prelude": "^4.1.0",
     "purescript-tuples": "^5.1.0",
-    "purescript-tables": "^0.0.1",
     "purescript-partial-order": "^0.0.1"
   },
   "devDependencies": {
