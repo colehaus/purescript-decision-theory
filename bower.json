@@ -9,6 +9,7 @@
     "result"
   ],
   "dependencies": {
+    "purescript-colehaus-properties": "^0.3.2",
     "purescript-lists": "^5.3.0",
     "purescript-partial": "^2.0.0",
     "purescript-prelude": "^4.1.0",
@@ -17,7 +18,9 @@
   },
   "devDependencies": {
     "purescript-psci-support": "^4.0.0",
-    "purescript-spec": "^3.1.0"
+    "purescript-quickcheck": "^5.0.0",
+    "purescript-spec": "^3.1.0",
+    "purescript-spec-quickcheck": "^3.1.0"
   },
   "repository": {
       "type": "git",
