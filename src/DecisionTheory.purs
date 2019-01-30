@@ -1,7 +1,6 @@
 module DecisionTheory where
 
 import Prelude hiding ((>=),(>))
-import Prelude as Prelude
 
 import Data.Foldable as Foldable
 import Data.List as List
@@ -9,6 +8,8 @@ import Data.List.NonEmpty (NonEmptyList)
 import Data.List.NonEmpty as NonEmpty
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Ord.Partial (class PartialOrd, (>=), (>))
+import Data.Semigroup.Foldable as Foldable1
+import Prelude as Prelude
 
 type Row = NonEmptyList
 
@@ -37,9 +38,10 @@ leximin row1 row2 =
     keepNonEq EQ = Nothing
 
 maximin :: forall cell. Ord cell => Row cell -> Row cell -> Boolean
-maximin row1 row2 =
-    NonEmpty.head $
-    NonEmpty.zipWith Prelude.(>=) (NonEmpty.sort row1) (NonEmpty.sort row2)
+maximin row1 row2 = Foldable1.minimum row1 Prelude.>= Foldable1.minimum row2
+
+maximax :: forall cell. Ord cell => Row cell -> Row cell -> Boolean
+maximax row1 row2 = Foldable1.maximum row1 Prelude.>= Foldable1.maximum row2
 
 -- | Functionally identical variant of `leximin` in which the implementation emphasizes the relationship between leximin and maximin
 leximin' :: forall cell. Ord cell => Row cell -> Row cell -> Boolean
@@ -48,6 +50,10 @@ leximin' = ximin identity
 -- | Functionally identical variant of `maximin` in which the implementation emphasizes the relationship between leximin and maximin
 maximin' :: forall cell. Ord cell => Row cell -> Row cell -> Boolean
 maximin' = ximin (NonEmpty.singleton <<< NonEmpty.head)
+
+-- | Functionally identical variant of `maximax` in which the implementation emphasizes the relationship between leximin and maximax
+maximax' :: forall cell. Ord cell => Row cell -> Row cell -> Boolean
+maximax' = ximin (NonEmpty.singleton <<< NonEmpty.last)
 
 -- | Helper function which is used to implement both `leximin'` and `maximin`'
 ximin ::
