@@ -8,6 +8,7 @@ import Data.Either (Either)
 import Data.Either as Either
 import Data.Foldable as Foldable
 import Data.Generic.Rep (class Generic)
+import Data.Identity (Identity(..))
 import Data.Int as Int
 import Data.List as List
 import Data.List.NonEmpty (NonEmptyList(..))
@@ -24,7 +25,7 @@ import Partial.Unsafe (unsafePartial)
 import Test.QuickCheck ((<?>), (===))
 import Test.QuickCheck as QuickCheck
 import Test.QuickCheck.Gen as Gen
-import Test.Spec (describe, it)
+import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual)
 import Test.Spec.QuickCheck (quickCheck')
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -36,31 +37,19 @@ quickCheck'' = quickCheck' 2000
 main :: Effect Unit
 main = run [consoleReporter] do
   describe "Domination" do
-    describe "Weak" do
-      it "works for domination" do
-        (ne 9 [ 9 ]) `dominatesWeakly` (ne 1 [ 1 ]) `shouldEqual` true
-      it "works for non-domination" do
-        (ne 1 [ 1 ]) `dominatesWeakly` (ne 0 [ 9 ]) `shouldEqual` false
-      it "is reflexive" do
-        quickCheck'' $ \(a :: NonEmptyList SmallNat) ->
-          Prop.reflexive dominatesWeakly a <?> (show a)
-      it "is antisymmetric" do
-        quickCheck'' $ \(MkListPair a b) ->
-          Prop.antisymmetric dominatesWeakly a b <?> (show [ a, b ])
-      it "is transitive" do
-        quickCheck'' $ \(MkListTriple a b c) ->
-          Prop.transitive dominatesWeakly a b c <?> (show [ a, b, c ])
+    it "works for domination" do
+      (ne 9 [ 9 ]) `dominatesWeakly` (ne 1 [ 1 ]) `shouldEqual` true
+    it "works for non-domination" do
+      (ne 1 [ 1 ]) `dominatesWeakly` (ne 0 [ 9 ]) `shouldEqual` false
+    it "is antisymmetric" do
+      quickCheck'' $ \(MkListPair a b) ->
+        Prop.antisymmetric dominatesWeakly a b <?> (show [ a, b ])
+    propGroup dominatesWeakly
     describe "Strong" do
       it "works for domination" do
         (ne 9 [ 9 ]) `dominatesStrongly` (ne 1 [ 1 ]) `shouldEqual` true
       it "works for non-domination" do
         (ne 1 [ 1 ]) `dominatesStrongly` (ne 1 [ 1 ]) `shouldEqual` false
-      it "is asymmetric" do
-        quickCheck'' $ \(MkListPair a b) ->
-          Prop.asymmetric dominatesStrongly a b <?> (show [ a, b ])
-      it "is transitive" do
-        quickCheck'' $ \(MkListTriple a b c) ->
-          Prop.transitive dominatesStrongly a b c <?> (show [ a, b, c ])
       it "implies weak domination" do
         quickCheck'' $ \(MkListPair a b) ->
           if a `dominatesStrongly` b
@@ -78,22 +67,10 @@ main = run [consoleReporter] do
       (ne 1 [ 5, 9 ]) `leximin` (ne 9 [ 5, 1 ]) `shouldEqual` true
     it "works for inferiority" do
       (ne 1 [ 5, 9 ]) `leximin` (ne 9 [ 6, 1 ]) `shouldEqual` false
-    it "is reflexive" do
-      quickCheck'' $ \(a :: NonEmptyList SmallNat) ->
-        Prop.reflexive leximin a <?> (show a)
-    it "is transitive" do
-      quickCheck'' $ \(MkListTriple a b c) ->
-        Prop.transitive leximin a b c <?> (show [ a, b, c ])
+    propGroup leximin
     it "is `leximin'`" do
       quickCheck'' $ \(MkListPair a b) ->
         leximin a b === leximin' a b
-    describe "Strong" do
-      it "is asymmetric" do
-        quickCheck'' $ \(MkListPair a b) ->
-          Prop.asymmetric (strengthen leximin) a b <?> (show [ a, b ])
-      it "is transitive" do
-        quickCheck'' $ \(MkListTriple a b c) ->
-          Prop.transitive (strengthen leximin) a b c <?> (show [ a, b, c ])
   describe "Maximin" do
     it "works for superiority" do
       (ne 2 [ 5, 9 ]) `maximin` (ne 9 [ 6, 1 ]) `shouldEqual` true
@@ -101,25 +78,14 @@ main = run [consoleReporter] do
       (ne 1 [ 5, 10 ]) `maximin` (ne 1 [ 9, 6 ]) `shouldEqual` true
     it "works for inferiority" do
       (ne 1 [ 6, 9 ]) `maximin` (ne 9 [ 5, 2 ]) `shouldEqual` false
-    it "is reflexive" do
-      quickCheck'' $ \(a :: NonEmptyList SmallNat) ->
-        Prop.reflexive maximin a <?> (show a)
-    it "is transitive" do
-      quickCheck'' $ \(MkListTriple a b c) ->
-        Prop.transitive maximin a b c <?> (show [ a, b, c ])
     it "is `maximin'`" do
       quickCheck'' $ \(MkListPair a b) ->
         maximin a b === maximin' a b
     it "is `maximin''`" do
       quickCheck'' $ \(MkListPair a b) ->
         maximin a b === maximin'' a b
+    propGroup maximin
     describe "Strong" do
-      it "is transitive" do
-        quickCheck'' $ \(MkListTriple a b c) ->
-          Prop.transitive (strengthen maximin) a b c <?> (show [ a, b, c ])
-      it "is asymmetric" do
-        quickCheck'' $ \(MkListPair a b) ->
-          Prop.asymmetric (strengthen maximin) a b <?> (show [ a, b ])
       it "implies leximin" do
         quickCheck'' $ \(MkListPair a b) ->
           if strengthen maximin a b
@@ -140,6 +106,23 @@ main = run [consoleReporter] do
       it "is asymmetric" do
         quickCheck'' $ \(MkArbProportion α) (MkListPair a b) ->
           Prop.asymmetric (strengthen (optimismPessimism α)) (conv a) (conv b) <?> (show [ a, b ])
+
+propGroup :: (Row SmallNat -> Row SmallNat -> Boolean) -> Spec Unit
+propGroup rule = do
+  it "is reflexive" do
+    quickCheck'' $ \(a :: NonEmptyList SmallNat) ->
+      Prop.reflexive rule a <?> (show a)
+  it "is transitive" do
+    quickCheck'' $ \(MkListTriple a b c) ->
+      Prop.transitive rule a b c <?> (show [ a, b, c ])
+  describe "Strong" do
+    it "is transitive" do
+      quickCheck'' $ \(MkListTriple a b c) ->
+        Prop.transitive (strengthen rule) a b c <?> (show [ a, b, c ])
+    it "is asymmetric" do
+      quickCheck'' $ \(MkListPair a b) ->
+        Prop.asymmetric (strengthen rule) a b <?> (show [ a, b ])
+
 
 fromRightEx :: forall l r. Either l r -> r
 fromRightEx x = unsafePartial $ Either.fromRight x
