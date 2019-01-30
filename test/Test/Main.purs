@@ -8,11 +8,16 @@ import Data.Either (Either)
 import Data.Either as Either
 import Data.Foldable as Foldable
 import Data.Generic.Rep (class Generic)
+import Data.Int as Int
 import Data.List as List
 import Data.List.NonEmpty (NonEmptyList(..))
 import Data.List.NonEmpty as NonEmpty
 import Data.Maybe as Maybe
+import Data.Newtype (class Newtype)
+import Data.Newtype as Newtype
 import Data.NonEmpty (NonEmpty(..))
+import Data.Proportion.Internal (Proportion(..))
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Partial.Unsafe (unsafePartial)
@@ -105,6 +110,9 @@ main = run [consoleReporter] do
     it "is `maximin'`" do
       quickCheck'' $ \(MkListPair a b) ->
         maximin a b === maximin' a b
+    it "is `maximin''`" do
+      quickCheck'' $ \(MkListPair a b) ->
+        maximin a b === maximin'' a b
     describe "Strong" do
       it "is transitive" do
         quickCheck'' $ \(MkListTriple a b c) ->
@@ -117,7 +125,21 @@ main = run [consoleReporter] do
           if strengthen maximin a b
           then strengthen leximin a b <?> (show [ a, b ])
           else QuickCheck.Success
-
+  describe "Optimism-Pessimism" do
+    let conv = map (Int.toNumber <<< Newtype.unwrap)
+    it "is reflexive" do
+      quickCheck'' $ \(MkArbProportion α) (a :: NonEmptyList SmallNat) ->
+        Prop.reflexive (optimismPessimism α) (conv a) <?> (show $ Tuple α a)
+    it "is transitive" do
+      quickCheck'' $ \(MkArbProportion α) (MkListTriple a b c) ->
+        Prop.transitive (optimismPessimism α) (conv a) (conv b) (conv c) <?> (show $ Tuple α [ a, b, c ])
+    describe "Strong" do
+      it "is transitive" do
+        quickCheck'' $ \(MkArbProportion α) (MkListTriple a b c) ->
+          Prop.transitive (strengthen (optimismPessimism α)) (conv a) (conv b) (conv c) <?> (show [ a, b, c ])
+      it "is asymmetric" do
+        quickCheck'' $ \(MkArbProportion α) (MkListPair a b) ->
+          Prop.asymmetric (strengthen (optimismPessimism α)) (conv a) (conv b) <?> (show [ a, b ])
 
 fromRightEx :: forall l r. Either l r -> r
 fromRightEx x = unsafePartial $ Either.fromRight x
@@ -129,6 +151,9 @@ newtype SmallNat = MkSmallNat Int
 derive instance eqSmallNat :: Eq SmallNat
 derive instance ordSmallNat :: Ord SmallNat
 derive instance genericSmallNat :: Generic SmallNat _
+derive instance newtypeSmallNat :: Newtype SmallNat _
+derive newtype instance semiringSmallNat :: Semiring SmallNat
+derive newtype instance ringSmallNat :: Ring SmallNat
 instance showSmallNat :: Show SmallNat where
   show (MkSmallNat i) = show i
 instance arbitrarySmallInt :: QuickCheck.Arbitrary SmallNat where
@@ -154,3 +179,8 @@ instance arbitraryListTriple :: QuickCheck.Arbitrary ListTriple where
     where
       arrayToList (NonEmpty a as) = NonEmptyList (NonEmpty a (List.fromFoldable as))
       toNonEmpty a = unsafePartial $ Maybe.fromJust <<< NonEmpty.fromFoldable $ a
+
+newtype ArbProportion = MkArbProportion (Proportion Number)
+
+instance arbitraryProportian :: QuickCheck.Arbitrary ArbProportion where
+  arbitrary = MkArbProportion <<< MkProportion <$> Gen.uniform

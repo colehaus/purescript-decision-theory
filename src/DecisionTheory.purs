@@ -7,8 +7,12 @@ import Data.List as List
 import Data.List.NonEmpty (NonEmptyList)
 import Data.List.NonEmpty as NonEmpty
 import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe as Maybe
 import Data.Ord.Partial (class PartialOrd, (>=), (>))
+import Data.Proportion (Proportion)
+import Data.Proportion as Proportion
 import Data.Semigroup.Foldable as Foldable1
+import Partial.Unsafe (unsafePartial)
 import Prelude as Prelude
 
 type Row = NonEmptyList
@@ -67,3 +71,17 @@ ximin f row1 row2 =
     keepNonEq GT = Just true
     keepNonEq LT = Just false
     keepNonEq EQ = Nothing
+
+optimismPessimism ::
+  forall n. Ord n => Ring n => Proportion n -> Row n -> Row n -> Boolean
+optimismPessimism α row1 row2 = val row1 >= val row2
+  where
+    val row =
+      Proportion.unMk α * Foldable1.maximum row +
+      (one - Proportion.unMk α) * Foldable1.minimum row
+
+maximax'' :: forall n. Ord n => Ring n => NonEmptyList n -> NonEmptyList n -> Boolean
+maximax'' = optimismPessimism (unsafePartial $ Maybe.fromJust $ Proportion.mk one)
+
+maximin'' :: forall n. Ord n => Ring n => NonEmptyList n -> NonEmptyList n -> Boolean
+maximin'' = optimismPessimism (unsafePartial $ Maybe.fromJust $ Proportion.mk zero)
