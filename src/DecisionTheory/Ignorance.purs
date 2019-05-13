@@ -1,6 +1,7 @@
 module DecisionTheory.Ignorance where
 
 import Prelude hiding ((>=),(>))
+import Prelude as Prelude
 
 import Data.Either (fromRight)
 import Data.Foldable as Foldable
@@ -19,8 +20,10 @@ import Data.Table (Table)
 import Data.Table as Table
 import Data.Tuple (Tuple(..), fst, snd)
 import Data.Tuple as Tuple
-import Partial.Unsafe (unsafePartial, unsafePartialBecause)
-import Prelude as Prelude
+import Data.Unfoldable1 as Unfold1
+import Partial.Unsafe (unsafePartialBecause)
+
+import DecisionTheory.Risk
 
 dominatesWeakly :: forall cell. PartialOrd cell => NonEmptyList (Tuple cell cell) -> Boolean
 dominatesWeakly rows = Foldable.all ((==) true) (NonEmpty.zipWith (>=) row1 row2)
@@ -131,3 +134,13 @@ minimaxRegret tbl =
     regretify cells = map (\c -> best - c) cells
       where
         best = SemiFold.maximum cells
+
+indifference ::
+  forall n.
+  EuclideanRing n => Ord n =>
+  (Int -> n) -> NonEmptyList (Tuple n n) -> Boolean
+indifference toRing rows =
+  maximizesExpectedUtility Proportion.unMk $ NonEmpty.zip (Unfold1.replicate1 len prob) rows
+  where
+    len = Foldable.length rows
+    prob = unsafePartialBecause "Statically known to be valid `Proportion`" $ fromJust $ Proportion.mk $ toRing 1 / toRing len
