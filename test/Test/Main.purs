@@ -4,20 +4,22 @@ import DecisionTheory
 import Prelude
 
 import Control.Algebra.Properties as Prop
-import Data.Either (Either)
+import Data.Either (Either, fromRight)
 import Data.Either as Either
 import Data.Foldable as Foldable
 import Data.Generic.Rep (class Generic)
-import Data.Identity (Identity(..))
 import Data.Int as Int
+import Data.List (List(..))
 import Data.List as List
 import Data.List.NonEmpty (NonEmptyList(..))
 import Data.List.NonEmpty as NonEmpty
+import Data.Map as Map
 import Data.Maybe as Maybe
 import Data.Newtype (class Newtype)
 import Data.Newtype as Newtype
 import Data.NonEmpty (NonEmpty(..))
 import Data.Proportion.Internal (Proportion(..))
+import Data.Table as Table
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Aff (Aff)
@@ -106,6 +108,28 @@ main = run [consoleReporter] do
       it "is asymmetric" do
         quickCheck'' $ \(MkArbProportion α) (MkListPair a b) ->
           Prop.asymmetric (strengthen (optimismPessimism α)) (conv a) (conv b) <?> (show [ a, b ])
+  describe "minimaxRegret" do
+    it "works for example cases" do
+      let cells =
+            [ Tuple (Tuple "row1" "column1") 12
+            , Tuple (Tuple "row1" "column2") 8
+            , Tuple (Tuple "row1" "column3") 20
+            , Tuple (Tuple "row1" "column4") 20
+            , Tuple (Tuple "row2" "column1") 10
+            , Tuple (Tuple "row2" "column2") 15
+            , Tuple (Tuple "row2" "column3") 16
+            , Tuple (Tuple "row2" "column4") 8
+            , Tuple (Tuple "row3" "column1") 30
+            , Tuple (Tuple "row3" "column2") 6
+            , Tuple (Tuple "row3" "column3") 25
+            , Tuple (Tuple "row3" "column4") 14
+            , Tuple (Tuple "row4" "column1") 20
+            , Tuple (Tuple "row4" "column2") 4
+            , Tuple (Tuple "row4" "column3") 30
+            , Tuple (Tuple "row4" "column4") 10
+            ]
+      minimaxRegret (unsafePartial $ fromRight <<< Table.mk $ Map.fromFoldable cells) `shouldEqual` NonEmptyList (NonEmpty "row3" Nil)
+
 
 propGroup :: (Row SmallNat -> Row SmallNat -> Boolean) -> Spec Unit
 propGroup rule = do
