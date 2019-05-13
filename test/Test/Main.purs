@@ -1,6 +1,6 @@
 module Test.Main where
 
-import DecisionTheory
+import DecisionTheory.Ignorance
 import Prelude
 
 import Control.Algebra.Properties as Prop

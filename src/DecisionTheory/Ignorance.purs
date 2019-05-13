@@ -1,4 +1,4 @@
-module DecisionTheory where
+module DecisionTheory.Ignorance where
 
 import Prelude hiding ((>=),(>))
 
