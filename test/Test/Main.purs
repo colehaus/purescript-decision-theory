@@ -40,74 +40,74 @@ main :: Effect Unit
 main = run [consoleReporter] do
   describe "Domination" do
     it "works for domination" do
-      (ne 9 [ 9 ]) `dominatesWeakly` (ne 1 [ 1 ]) `shouldEqual` true
+      (ne 9 [ 9 ]) `listCurry dominatesWeakly` (ne 1 [ 1 ]) `shouldEqual` true
     it "works for non-domination" do
-      (ne 1 [ 1 ]) `dominatesWeakly` (ne 0 [ 9 ]) `shouldEqual` false
+      (ne 1 [ 1 ]) `listCurry dominatesWeakly` (ne 0 [ 9 ]) `shouldEqual` false
     it "is antisymmetric" do
       quickCheck'' $ \(MkListPair a b) ->
-        Prop.antisymmetric dominatesWeakly a b <?> (show [ a, b ])
+        Prop.antisymmetric (listCurry dominatesWeakly) a b <?> (show [ a, b ])
     propGroup dominatesWeakly
     describe "Strong" do
       it "works for domination" do
-        (ne 9 [ 9 ]) `dominatesStrongly` (ne 1 [ 1 ]) `shouldEqual` true
+        (ne 9 [ 9 ]) `listCurry dominatesStrongly` (ne 1 [ 1 ]) `shouldEqual` true
       it "works for non-domination" do
-        (ne 1 [ 1 ]) `dominatesStrongly` (ne 1 [ 1 ]) `shouldEqual` false
+        (ne 1 [ 1 ]) `listCurry dominatesStrongly` (ne 1 [ 1 ]) `shouldEqual` false
       it "implies weak domination" do
         quickCheck'' $ \(MkListPair a b) ->
-          if a `dominatesStrongly` b
-          then a `dominatesWeakly` b <?> (show [ a, b ])
+          if a `listCurry dominatesStrongly` b
+          then a `listCurry dominatesWeakly` b <?> (show [ a, b ])
           else QuickCheck.Success
       it "is `dominatesWeakly` `strengthen`ed" do
         quickCheck'' $ \(MkListPair a b) ->
-          dominatesStrongly a b === strengthen dominatesWeakly a b
+          (listCurry dominatesStrongly) a b == listCurry (strengthen dominatesWeakly) a b <?> (show [a, b])
   describe "Leximin" do
     it "works for superiority at worst outcome" do
-      (ne 2 [ 5, 9 ]) `leximin` (ne 9 [ 6, 1 ]) `shouldEqual` true
+      (ne 2 [ 5, 9 ]) `listCurry leximin` (ne 9 [ 6, 1 ]) `shouldEqual` true
     it "works for superiority at best outcome" do
-      (ne 1 [ 5, 9 ]) `leximin` (ne 8 [ 5, 1 ]) `shouldEqual` true
+      (ne 1 [ 5, 9 ]) `listCurry leximin` (ne 8 [ 5, 1 ]) `shouldEqual` true
     it "works for equality" do
-      (ne 1 [ 5, 9 ]) `leximin` (ne 9 [ 5, 1 ]) `shouldEqual` true
+      (ne 1 [ 5, 9 ]) `listCurry leximin` (ne 9 [ 5, 1 ]) `shouldEqual` true
     it "works for inferiority" do
-      (ne 1 [ 5, 9 ]) `leximin` (ne 9 [ 6, 1 ]) `shouldEqual` false
+      (ne 1 [ 5, 9 ]) `listCurry leximin` (ne 9 [ 6, 1 ]) `shouldEqual` false
     propGroup leximin
     it "is `leximin'`" do
       quickCheck'' $ \(MkListPair a b) ->
-        leximin a b === leximin' a b
+        listCurry leximin a b === listCurry leximin' a b
   describe "Maximin" do
     it "works for superiority" do
-      (ne 2 [ 5, 9 ]) `maximin` (ne 9 [ 6, 1 ]) `shouldEqual` true
+      (ne 2 [ 5, 9 ]) `listCurry maximin` (ne 9 [ 6, 1 ]) `shouldEqual` true
     it "works for equality" do
-      (ne 1 [ 5, 10 ]) `maximin` (ne 1 [ 9, 6 ]) `shouldEqual` true
+      (ne 1 [ 5, 10 ]) `listCurry maximin` (ne 1 [ 9, 6 ]) `shouldEqual` true
     it "works for inferiority" do
-      (ne 1 [ 6, 9 ]) `maximin` (ne 9 [ 5, 2 ]) `shouldEqual` false
+      (ne 1 [ 6, 9 ]) `listCurry maximin` (ne 9 [ 5, 2 ]) `shouldEqual` false
     it "is `maximin'`" do
       quickCheck'' $ \(MkListPair a b) ->
-        maximin a b === maximin' a b
+        listCurry maximin a b === listCurry maximin' a b
     it "is `maximin''`" do
       quickCheck'' $ \(MkListPair a b) ->
-        maximin a b === maximin'' a b
+        listCurry maximin a b === listCurry maximin'' a b
     propGroup maximin
     describe "Strong" do
       it "implies leximin" do
         quickCheck'' $ \(MkListPair a b) ->
-          if strengthen maximin a b
-          then strengthen leximin a b <?> (show [ a, b ])
+          if listCurry (strengthen maximin) a b
+          then listCurry (strengthen leximin) a b <?> (show [ a, b ])
           else QuickCheck.Success
   describe "Optimism-Pessimism" do
     let conv = map (Int.toNumber <<< Newtype.unwrap)
     it "is reflexive" do
       quickCheck'' $ \(MkArbProportion α) (a :: NonEmptyList SmallNat) ->
-        Prop.reflexive (optimismPessimism α) (conv a) <?> (show $ Tuple α a)
+        Prop.reflexive (listCurry (optimismPessimism α)) (conv a) <?> (show $ Tuple α a)
     it "is transitive" do
       quickCheck'' $ \(MkArbProportion α) (MkListTriple a b c) ->
-        Prop.transitive (optimismPessimism α) (conv a) (conv b) (conv c) <?> (show $ Tuple α [ a, b, c ])
+        Prop.transitive (listCurry (optimismPessimism α)) (conv a) (conv b) (conv c) <?> (show $ Tuple α [ a, b, c ])
     describe "Strong" do
       it "is transitive" do
         quickCheck'' $ \(MkArbProportion α) (MkListTriple a b c) ->
-          Prop.transitive (strengthen (optimismPessimism α)) (conv a) (conv b) (conv c) <?> (show [ a, b, c ])
+          Prop.transitive (listCurry (strengthen (optimismPessimism α))) (conv a) (conv b) (conv c) <?> (show [ a, b, c ])
       it "is asymmetric" do
         quickCheck'' $ \(MkArbProportion α) (MkListPair a b) ->
-          Prop.asymmetric (strengthen (optimismPessimism α)) (conv a) (conv b) <?> (show [ a, b ])
+          Prop.asymmetric (listCurry (strengthen (optimismPessimism α))) (conv a) (conv b) <?> (show [ a, b ])
   describe "minimaxRegret" do
     it "works for example cases" do
       let cells =
@@ -131,22 +131,27 @@ main = run [consoleReporter] do
       minimaxRegret (unsafePartial $ fromRight <<< Table.mk $ Map.fromFoldable cells) `shouldEqual` NonEmptyList (NonEmpty "row3" Nil)
 
 
-propGroup :: (Row SmallNat -> Row SmallNat -> Boolean) -> Spec Unit
+propGroup :: (NonEmptyList (Tuple SmallNat SmallNat) -> Boolean) -> Spec Unit
 propGroup rule = do
   it "is reflexive" do
     quickCheck'' $ \(a :: NonEmptyList SmallNat) ->
-      Prop.reflexive rule a <?> (show a)
+      Prop.reflexive (listCurry rule) a <?> (show a)
   it "is transitive" do
     quickCheck'' $ \(MkListTriple a b c) ->
-      Prop.transitive rule a b c <?> (show [ a, b, c ])
+      Prop.transitive (listCurry rule) a b c <?> (show [ a, b, c ])
   describe "Strong" do
     it "is transitive" do
       quickCheck'' $ \(MkListTriple a b c) ->
-        Prop.transitive (strengthen rule) a b c <?> (show [ a, b, c ])
+        Prop.transitive (listCurry (strengthen rule)) a b c <?> (show [ a, b, c ])
     it "is asymmetric" do
       quickCheck'' $ \(MkListPair a b) ->
-        Prop.asymmetric (strengthen rule) a b <?> (show [ a, b ])
+        Prop.asymmetric (listCurry (strengthen rule)) a b <?> (show [ a, b ])
 
+listCurry ::
+  forall cell.
+  (NonEmptyList (Tuple cell cell) -> Boolean) ->
+  NonEmptyList cell -> NonEmptyList cell -> Boolean
+listCurry rule row1 row2 = rule (NonEmpty.zip row1 row2)
 
 fromRightEx :: forall l r. Either l r -> r
 fromRightEx x = unsafePartial $ Either.fromRight x

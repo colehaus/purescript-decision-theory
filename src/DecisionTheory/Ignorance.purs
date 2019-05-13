@@ -17,88 +17,97 @@ import Data.Semigroup.Foldable as Foldable1
 import Data.Semigroup.Foldable as SemiFold
 import Data.Table (Table)
 import Data.Table as Table
-import Data.Tuple (fst, snd)
+import Data.Tuple (Tuple(..), fst, snd)
+import Data.Tuple as Tuple
 import Partial.Unsafe (unsafePartial, unsafePartialBecause)
 import Prelude as Prelude
 
-type Row = NonEmptyList
-type Column = NonEmptyList
+dominatesWeakly :: forall cell. PartialOrd cell => NonEmptyList (Tuple cell cell) -> Boolean
+dominatesWeakly rows = Foldable.all ((==) true) (NonEmpty.zipWith (>=) row1 row2)
+  where
+    Tuple row1 row2 = NonEmpty.unzip rows
 
-dominatesWeakly :: forall cell. PartialOrd cell => Row cell -> Row cell -> Boolean
-dominatesWeakly row1 row2 = Foldable.all ((==) true) (NonEmpty.zipWith (>=) row1 row2)
+dominatesStrongly :: forall cell. PartialOrd cell => NonEmptyList (Tuple cell cell) -> Boolean
+dominatesStrongly rows =
+  Foldable.all ((==) true) (NonEmpty.zipWith (>=) row1 row2) &&
+  Foldable.any ((==) true) (NonEmpty.zipWith (>) row1 row2)
+  where
+    Tuple row1 row2 = NonEmpty.unzip rows
 
-dominatesStrongly :: forall cell. PartialOrd cell => Row cell -> Row cell -> Boolean
-dominatesStrongly row1 row2 =
-    Foldable.all ((==) true) (NonEmpty.zipWith (>=) row1 row2) &&
-    Foldable.any ((==) true) (NonEmpty.zipWith (>) row1 row2)
-
-strengthen :: forall cell. (Row cell -> Row cell -> Boolean) -> Row cell -> Row cell -> Boolean
-strengthen f row1 row2 = f row1 row2 && not (f row2 row1)
+strengthen :: forall cell. (NonEmptyList (Tuple cell cell) -> Boolean) -> NonEmptyList (Tuple cell cell) -> Boolean
+strengthen f rows = f rows && not (f $ map Tuple.swap rows)
 
 -- | A functionally identical variant of `dominatesStrongly` in which the implementation emphasizes that it is the asymmetric version of `dominatesWeakly`
-dominatesStrongly' :: forall cell. PartialOrd cell => Row cell -> Row cell -> Boolean
+dominatesStrongly' :: forall cell. PartialOrd cell => NonEmptyList (Tuple cell cell) -> Boolean
 dominatesStrongly' = strengthen dominatesWeakly
 
-leximin :: forall cell. Ord cell => Row cell -> Row cell -> Boolean
-leximin row1 row2 =
+leximin :: forall cell. Ord cell => NonEmptyList (Tuple cell cell) -> Boolean
+leximin rows =
     fromMaybe true <<< List.head <<< NonEmpty.mapMaybe keepNonEq $
     NonEmpty.zipWith compare (NonEmpty.sort row1) (NonEmpty.sort row2)
   where
+    Tuple row1 row2 = NonEmpty.unzip rows
     keepNonEq GT = Just true
     keepNonEq LT = Just false
     keepNonEq EQ = Nothing
 
-maximin :: forall cell. Ord cell => Row cell -> Row cell -> Boolean
-maximin row1 row2 = Foldable1.minimum row1 Prelude.>= Foldable1.minimum row2
+maximin :: forall cell. Ord cell => NonEmptyList (Tuple cell cell) -> Boolean
+maximin rows = Foldable1.minimum row1 Prelude.>= Foldable1.minimum row2
+  where
+    Tuple row1 row2 = NonEmpty.unzip rows
 
-maximax :: forall cell. Ord cell => Row cell -> Row cell -> Boolean
-maximax row1 row2 = Foldable1.maximum row1 Prelude.>= Foldable1.maximum row2
+maximax :: forall cell. Ord cell => NonEmptyList (Tuple cell cell) -> Boolean
+maximax rows = Foldable1.maximum row1 Prelude.>= Foldable1.maximum row2
+  where
+    Tuple row1 row2 = NonEmpty.unzip rows
 
 -- | Functionally identical variant of `leximin` in which the implementation emphasizes the relationship between leximin and maximin
-leximin' :: forall cell. Ord cell => Row cell -> Row cell -> Boolean
+leximin' :: forall cell. Ord cell => NonEmptyList (Tuple cell cell) -> Boolean
 leximin' = ximin identity
 
 -- | Functionally identical variant of `maximin` in which the implementation emphasizes the relationship between leximin and maximin
-maximin' :: forall cell. Ord cell => Row cell -> Row cell -> Boolean
+maximin' :: forall cell. Ord cell => NonEmptyList (Tuple cell cell) -> Boolean
 maximin' = ximin (NonEmpty.singleton <<< NonEmpty.head)
 
 -- | Functionally identical variant of `maximax` in which the implementation emphasizes the relationship between leximin and maximax
-maximax' :: forall cell. Ord cell => Row cell -> Row cell -> Boolean
+maximax' :: forall cell. Ord cell => NonEmptyList (Tuple cell cell)-> Boolean
 maximax' = ximin (NonEmpty.singleton <<< NonEmpty.last)
 
 -- | Helper function which is used to implement both `leximin'` and `maximin`'
 ximin ::
   forall cell.
   Ord cell =>
-  (forall a. NonEmptyList a -> NonEmptyList a) -> Row cell -> Row cell -> Boolean
-ximin f row1 row2 =
+  (forall a. NonEmptyList a -> NonEmptyList a) -> NonEmptyList (Tuple cell cell) -> Boolean
+ximin f rows =
     fromMaybe true <<< List.head <<< NonEmpty.mapMaybe keepNonEq <<< f $
     NonEmpty.zipWith compare (NonEmpty.sort row1) (NonEmpty.sort row2)
   where
+    Tuple row1 row2 = NonEmpty.unzip rows
     keepNonEq GT = Just true
     keepNonEq LT = Just false
     keepNonEq EQ = Nothing
 
 optimismPessimism ::
-  forall n. Ord n => Ring n => Proportion n -> Row n -> Row n -> Boolean
-optimismPessimism α row1 row2 = val row1 >= val row2
+  forall n. Ord n => Ring n => Proportion n -> NonEmptyList (Tuple n n) -> Boolean
+optimismPessimism α rows = val row1 >= val row2
   where
+    Tuple row1 row2 = NonEmpty.unzip rows
     val row =
       Proportion.unMk α * Foldable1.maximum row +
       (one - Proportion.unMk α) * Foldable1.minimum row
 
-maximax'' :: forall n. Ord n => Ring n => Row n -> Row n -> Boolean
+maximax'' :: forall cell. Ord cell => Ring cell => NonEmptyList (Tuple cell cell) -> Boolean
 maximax'' = optimismPessimism (unsafePartial $ Maybe.fromJust $ Proportion.mk one)
 
-maximin'' :: forall n. Ord n => Ring n => Row n -> Row n -> Boolean
+maximin'' :: forall cell. Ord cell => Ring cell => NonEmptyList (Tuple cell cell) -> Boolean
 maximin'' = optimismPessimism (unsafePartial $ Maybe.fromJust $ Proportion.mk zero)
 
 extremal ::
   forall rowId columnId cell.
   Ord columnId => Ord rowId =>
-  (Row cell -> Row cell -> Boolean) -> Table rowId columnId cell -> List rowId
+  (NonEmptyList (Tuple cell cell) -> Boolean) -> Table rowId columnId cell -> List rowId
 extremal relation tbl =
-  map rowId <<< List.filter (\r1 -> List.all (\r2 -> map snd r1 `relation` r2) cellsOfRows) $ rows
+  map rowId <<< List.filter (\r1 -> List.all (\r2 -> relation (NonEmpty.zip (map snd r1) r2)) cellsOfRows) $ rows
   where
     rowId = fst <<< fst <<< NonEmpty.head
     cellsOfRows = map (map snd) rows
@@ -116,7 +125,9 @@ minimaxRegret tbl =
     regrets =
       unsafePartialBecause "`Regretify` preserves table validity" $ fromRight $
       Table.mapColumns regretify tbl
-    minimax row1 row2 = Foldable1.maximum row1 Prelude.<= Foldable1.maximum row2
+    minimax rows = Foldable1.maximum row1 Prelude.<= Foldable1.maximum row2
+      where
+        Tuple row1 row2 = NonEmpty.unzip rows
     regretify cells = map (\c -> best - c) cells
       where
         best = SemiFold.maximum cells
