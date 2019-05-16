@@ -1,10 +1,11 @@
 module DecisionTheory.Ignorance where
 
+import DecisionTheory.Risk
 import Prelude hiding ((>=),(>))
-import Prelude as Prelude
 
 import Data.Either (fromRight)
 import Data.Foldable as Foldable
+import Data.Int as Int
 import Data.List (List)
 import Data.List as List
 import Data.List.NonEmpty (NonEmptyList)
@@ -22,8 +23,7 @@ import Data.Tuple (Tuple(..), fst, snd)
 import Data.Tuple as Tuple
 import Data.Unfoldable1 as Unfold1
 import Partial.Unsafe (unsafePartialBecause)
-
-import DecisionTheory.Risk
+import Prelude as Prelude
 
 dominatesWeakly :: forall cell. PartialOrd cell => NonEmptyList (Tuple cell cell) -> Boolean
 dominatesWeakly rows = Foldable.all ((==) true) (NonEmpty.zipWith (>=) row1 row2)
@@ -91,19 +91,41 @@ ximin f rows =
     keepNonEq EQ = Nothing
 
 optimismPessimism ::
-  forall n. Ord n => Ring n => Proportion n -> NonEmptyList (Tuple n n) -> Boolean
-optimismPessimism α rows = val row1 >= val row2
+  forall n cell.
+  Ord cell => Semiring cell => Ring n =>
+  (n -> cell) -> Proportion n -> NonEmptyList (Tuple cell cell) -> Boolean
+optimismPessimism toCell α rows = val row1 >= val row2
   where
     Tuple row1 row2 = NonEmpty.unzip rows
     val row =
-      Proportion.unMk α * Foldable1.maximum row +
-      (one - Proportion.unMk α) * Foldable1.minimum row
+      toCell (Proportion.unMk α) * Foldable1.maximum row +
+      toCell (one - Proportion.unMk α) * Foldable1.minimum row
 
-maximax'' :: forall cell. Ord cell => Ring cell => NonEmptyList (Tuple cell cell) -> Boolean
-maximax'' = optimismPessimism (unsafePartial $ Maybe.fromJust $ Proportion.mk one)
+maximax'' ::
+  forall cell.
+  Ord cell => Semiring cell =>
+  (Number -> cell) -> NonEmptyList (Tuple cell cell) -> Boolean
+maximax'' toCell =
+  optimismPessimism toCell $ unsafePartialBecause "Statically known to be valid `Proportion`" $ fromJust $ Proportion.mk one
 
-maximin'' :: forall cell. Ord cell => Ring cell => NonEmptyList (Tuple cell cell) -> Boolean
-maximin'' = optimismPessimism (unsafePartial $ Maybe.fromJust $ Proportion.mk zero)
+maximin'' ::
+  forall cell.
+  Ord cell => Semiring cell =>
+  (Number -> cell) -> NonEmptyList (Tuple cell cell) -> Boolean
+maximin'' toCell =
+  optimismPessimism toCell $ unsafePartialBecause "Statically known to be valid `Proportion`"  $ Maybe.fromJust $ Proportion.mk zero
+
+weakRelationToOrdering ::
+  forall cell.
+  (NonEmptyList (Tuple cell cell) -> Boolean) -> NonEmptyList (Tuple cell cell) -> Maybe Ordering
+weakRelationToOrdering f rows =
+  case Tuple (f $ NonEmpty.zip row1 row2) (f $ NonEmpty.zip row2 row1) of
+    Tuple true true -> Just EQ
+    Tuple true false -> Just GT
+    Tuple false true -> Just LT
+    Tuple false false -> Nothing
+  where
+    Tuple row1 row2 = NonEmpty.unzip rows
 
 extremal ::
   forall rowId columnId cell.
@@ -136,11 +158,11 @@ minimaxRegret tbl =
         best = SemiFold.maximum cells
 
 indifference ::
-  forall n.
-  EuclideanRing n => Ord n =>
-  (Int -> n) -> NonEmptyList (Tuple n n) -> Boolean
-indifference toRing rows =
-  maximizesExpectedUtility Proportion.unMk $ NonEmpty.zip (Unfold1.replicate1 len prob) rows
+  forall cell.
+  Ord cell => Semiring cell =>
+  (Proportion Number -> cell) -> NonEmptyList (Tuple cell cell) -> Boolean
+indifference toCell rows =
+  maximizesExpectedUtility toCell $ NonEmpty.zip (Unfold1.replicate1 len prob) rows
   where
     len = Foldable.length rows
-    prob = unsafePartialBecause "Statically known to be valid `Proportion`" $ fromJust $ Proportion.mk $ toRing 1 / toRing len
+    prob = unsafePartialBecause "Statically known to be valid `Proportion`" $ fromJust $ Proportion.mk $ 1.0 / Int.toNumber len
