@@ -16,7 +16,8 @@
     "purescript-tuples": "^5.1.0",
     "purescript-partial-order": "^0.0.1",
     "purescript-proportion": "^0.3.0",
-    "purescript-tables": "../purescript-tables"
+    "purescript-tables": "../purescript-tables",
+    "purescript-rationals": "^5.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^4.0.0",

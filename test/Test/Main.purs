@@ -18,13 +18,17 @@ import Data.Maybe as Maybe
 import Data.Newtype (class Newtype)
 import Data.Newtype as Newtype
 import Data.NonEmpty (NonEmpty(..))
+import Data.Ordering as Ord
+import Data.Proportion as Proportion
 import Data.Proportion.Internal (Proportion(..))
+import Data.Rational (Rational)
+import Data.Rational as Rational
 import Data.Table as Table
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Aff (Aff)
 import Partial.Unsafe (unsafePartial)
-import Test.QuickCheck ((<?>), (===))
+import Test.QuickCheck (Result, (<?>), (===))
 import Test.QuickCheck as QuickCheck
 import Test.QuickCheck.Gen as Gen
 import Test.Spec (Spec, describe, it)
@@ -36,6 +40,12 @@ import Test.Spec.Runner (run)
 quickCheck'' :: forall t2. QuickCheck.Testable t2 => t2 -> Aff Unit
 quickCheck'' = quickCheck' 2000
 
+implies :: Boolean -> Result -> Result
+implies antecedent consequent =
+  if antecedent
+  then consequent
+  else QuickCheck.Success
+
 main :: Effect Unit
 main = run [consoleReporter] do
   describe "Domination" do
@@ -45,7 +55,7 @@ main = run [consoleReporter] do
       (ne 1 [ 1 ]) `listCurry dominatesWeakly` (ne 0 [ 9 ]) `shouldEqual` false
     it "is antisymmetric" do
       quickCheck'' $ \(MkListPair a b) ->
-        Prop.antisymmetric (listCurry dominatesWeakly) a b <?> (show [ a, b ])
+        Prop.antisymmetric (listCurry dominatesWeakly) a b <?> show [ a, b ]
     propGroup dominatesWeakly
     describe "Strong" do
       it "works for domination" do
@@ -54,12 +64,11 @@ main = run [consoleReporter] do
         (ne 1 [ 1 ]) `listCurry dominatesStrongly` (ne 1 [ 1 ]) `shouldEqual` false
       it "implies weak domination" do
         quickCheck'' $ \(MkListPair a b) ->
-          if a `listCurry dominatesStrongly` b
-          then a `listCurry dominatesWeakly` b <?> (show [ a, b ])
-          else QuickCheck.Success
+          (a `listCurry dominatesStrongly` b) `implies`
+          (a `listCurry dominatesWeakly` b <?> show [ a, b ])
       it "is `dominatesWeakly` `strengthen`ed" do
         quickCheck'' $ \(MkListPair a b) ->
-          (listCurry dominatesStrongly) a b == listCurry (strengthen dominatesWeakly) a b <?> (show [a, b])
+          (listCurry dominatesStrongly) a b == listCurry (strengthen dominatesWeakly) a b <?> show [a, b]
   describe "Leximin" do
     it "works for superiority at worst outcome" do
       (ne 2 [ 5, 9 ]) `listCurry leximin` (ne 9 [ 6, 1 ]) `shouldEqual` true
@@ -85,31 +94,33 @@ main = run [consoleReporter] do
         listCurry maximin a b === listCurry maximin' a b
     it "is `maximin''`" do
       quickCheck'' $ \(MkListPair a b) ->
-        listCurry maximin a b === listCurry maximin'' a b
+        listCurry maximin a b === listCurry (maximin'' (MkSmallNum <<< Rational.fromInt <<< Int.round)) a b
+    it "is invariant under column duplication" do
+      let dupHead (NonEmptyList (NonEmpty x xs)) = NonEmptyList (NonEmpty x (x `Cons` xs))
+          prop2SmallNum = MkSmallNum <<< Rational.fromInt <<< Int.round <<< Proportion.unMk
+      quickCheck'' $ \(MkListPair a b) ->
+        a `listCurry maximin` b === dupHead a `listCurry maximin` dupHead b
     propGroup maximin
     describe "Strong" do
       it "implies leximin" do
         quickCheck'' $ \(MkListPair a b) ->
           if listCurry (strengthen maximin) a b
-          then listCurry (strengthen leximin) a b <?> (show [ a, b ])
+          then listCurry (strengthen leximin) a b <?> show [ a, b ]
           else QuickCheck.Success
   describe "Optimism-Pessimism" do
-    let conv = map (Int.toNumber <<< Newtype.unwrap)
+    let conv = map (Rational.toNumber <<< Newtype.unwrap)
     it "is reflexive" do
-      quickCheck'' $ \(MkArbProportion α) (a :: NonEmptyList SmallNat) ->
-        Prop.reflexive (listCurry (optimismPessimism α)) (conv a) <?> (show $ Tuple α a)
-    it "is transitive" do
-      quickCheck'' $ \(MkArbProportion α) (MkListTriple a b c) ->
-        Prop.transitive (listCurry (optimismPessimism α)) (conv a) (conv b) (conv c) <?> (show $ Tuple α [ a, b, c ])
+      quickCheck'' $ \(MkArbProportion α) (a :: NonEmptyList SmallNum) ->
+        Prop.reflexive (listCurry (optimismPessimism identity α)) (conv a) <?> show (Tuple α a)
     describe "Strong" do
       it "is transitive" do
         quickCheck'' $ \(MkArbProportion α) (MkListTriple a b c) ->
-          Prop.transitive (listCurry (strengthen (optimismPessimism α))) (conv a) (conv b) (conv c) <?> (show [ a, b, c ])
+          Prop.transitive (listCurry (strengthen (optimismPessimism identity α))) (conv a) (conv b) (conv c) <?> show [ a, b, c ]
       it "is asymmetric" do
         quickCheck'' $ \(MkArbProportion α) (MkListPair a b) ->
-          Prop.asymmetric (listCurry (strengthen (optimismPessimism α))) (conv a) (conv b) <?> (show [ a, b ])
+          Prop.asymmetric (listCurry (strengthen (optimismPessimism identity α))) (conv a) (conv b) <?> show [ a, b ]
   describe "minimaxRegret" do
-    it "works for example cases" do
+    it "works for an example" do
       let cells =
             [ Tuple (Tuple "row1" "column1") 12
             , Tuple (Tuple "row1" "column2") 8
@@ -129,28 +140,50 @@ main = run [consoleReporter] do
             , Tuple (Tuple "row4" "column4") 10
             ]
       minimaxRegret (unsafePartial $ fromRight <<< Table.mk $ Map.fromFoldable cells) `shouldEqual` NonEmptyList (NonEmpty "row3" Nil)
+  describe "indifference" do
+    it "works for an example" do
+      (ne 1.1 [ 1.0 ]) `listCurry (indifference Proportion.unMk)` (ne 1.2 [ 0.8 ]) `shouldEqual` true
+    it "is linear in columns" do
+      let mapHead f (NonEmptyList (NonEmpty x xs)) = NonEmptyList (NonEmpty (f x) xs)
+          prop2SmallNum = MkSmallNum <<< Rational.fromInt <<< Int.round <<< Proportion.unMk
+          indifference' a b = listCurry (indifference prop2SmallNum) a b
+      quickCheck'' $ \(MkListPair a b) c ->
+        let a' = mapHead (_ + c) a
+            b' = mapHead (_ + c) b
+        in
+          (a `indifference'` b ==
+          a' `indifference'` b') <?> show (Tuple [a, b, a', b'] c)
 
-
-propGroup :: (NonEmptyList (Tuple SmallNat SmallNat) -> Boolean) -> Spec Unit
+propGroup :: (NonEmptyList (Tuple SmallNum SmallNum) -> Boolean) -> Spec Unit
 propGroup rule = do
+  it "is invariant under relabeling (symmetric)" do
+    quickCheck'' $ \(MkListPair a b) ->
+      listCurry (weakRelationToOrdering rule) a b === Ord.invert <$> listCurry (weakRelationToOrdering rule) b a
   it "is reflexive" do
-    quickCheck'' $ \(a :: NonEmptyList SmallNat) ->
-      Prop.reflexive (listCurry rule) a <?> (show a)
+    quickCheck'' $ \(a :: NonEmptyList SmallNum) ->
+      Prop.reflexive (listCurry rule) a <?> show a
   it "is transitive" do
     quickCheck'' $ \(MkListTriple a b c) ->
-      Prop.transitive (listCurry rule) a b c <?> (show [ a, b, c ])
+      Prop.transitive (listCurry rule) a b c <?> show [ a, b, c ]
+  it "obeys strict dominance" do
+    quickCheck'' $ \(MkListPair a b) ->
+      (a `listCurry dominatesStrongly` b) `implies`
+      ((a `listCurry rule` b) <?> show [ a, b ])
+  it "works on an interval scale" do
+    quickCheck'' $ \(MkListPair a b) add mult ->
+      (a `listCurry rule` b == ((\n -> mult * n + add) <$> a) `listCurry rule` ((\n -> mult * n + add) <$> b)) <?> show (Tuple [ a, b ] [ add, mult ])
   describe "Strong" do
     it "is transitive" do
       quickCheck'' $ \(MkListTriple a b c) ->
-        Prop.transitive (listCurry (strengthen rule)) a b c <?> (show [ a, b, c ])
+        Prop.transitive (listCurry (strengthen rule)) a b c <?> show [ a, b, c ]
     it "is asymmetric" do
       quickCheck'' $ \(MkListPair a b) ->
-        Prop.asymmetric (listCurry (strengthen rule)) a b <?> (show [ a, b ])
+        Prop.asymmetric (listCurry (strengthen rule)) a b <?> show [ a, b ]
 
 listCurry ::
-  forall cell.
-  (NonEmptyList (Tuple cell cell) -> Boolean) ->
-  NonEmptyList cell -> NonEmptyList cell -> Boolean
+  forall cell res.
+  (NonEmptyList (Tuple cell cell) -> res) ->
+  NonEmptyList cell -> NonEmptyList cell -> res
 listCurry rule row1 row2 = rule (NonEmpty.zip row1 row2)
 
 fromRightEx :: forall l r. Either l r -> r
@@ -159,19 +192,19 @@ fromRightEx x = unsafePartial $ Either.fromRight x
 ne :: forall a. a -> Array a -> NonEmptyList a
 ne x y = NonEmptyList (NonEmpty x (List.fromFoldable y))
 
-newtype SmallNat = MkSmallNat Int
-derive instance eqSmallNat :: Eq SmallNat
-derive instance ordSmallNat :: Ord SmallNat
-derive instance genericSmallNat :: Generic SmallNat _
-derive instance newtypeSmallNat :: Newtype SmallNat _
-derive newtype instance semiringSmallNat :: Semiring SmallNat
-derive newtype instance ringSmallNat :: Ring SmallNat
-instance showSmallNat :: Show SmallNat where
-  show (MkSmallNat i) = show i
-instance arbitrarySmallInt :: QuickCheck.Arbitrary SmallNat where
-  arbitrary = MkSmallNat <$> Gen.chooseInt 1 10
+newtype SmallNum = MkSmallNum Rational
+derive instance eqSmallNum :: Eq SmallNum
+derive instance ordSmallNum :: Ord SmallNum
+derive instance genericSmallNum :: Generic SmallNum _
+derive instance newtypeSmallNum :: Newtype SmallNum _
+derive newtype instance semiringSmallNum :: Semiring SmallNum
+derive newtype instance ringSmallNum :: Ring SmallNum
+instance showSmallNum :: Show SmallNum where
+  show (MkSmallNum i) = show i
+instance arbitrarySmallNum :: QuickCheck.Arbitrary SmallNum where
+  arbitrary = MkSmallNum <<< Rational.fromInt <$> Gen.chooseInt 1 10
 
-data ListPair = MkListPair (NonEmptyList SmallNat) (NonEmptyList SmallNat)
+data ListPair = MkListPair (NonEmptyList SmallNum) (NonEmptyList SmallNum)
 instance arbitraryListPair :: QuickCheck.Arbitrary ListPair where
   arbitrary = do
     l <- arrayToList <$> Gen.arrayOf1 QuickCheck.arbitrary
@@ -181,7 +214,7 @@ instance arbitraryListPair :: QuickCheck.Arbitrary ListPair where
       arrayToList (NonEmpty a as) = NonEmptyList (NonEmpty a (List.fromFoldable as))
       toNonEmpty a = unsafePartial $ Maybe.fromJust <<< NonEmpty.fromFoldable $ a
 
-data ListTriple = MkListTriple (NonEmptyList SmallNat) (NonEmptyList SmallNat) (NonEmptyList SmallNat)
+data ListTriple = MkListTriple (NonEmptyList SmallNum) (NonEmptyList SmallNum) (NonEmptyList SmallNum)
 instance arbitraryListTriple :: QuickCheck.Arbitrary ListTriple where
   arbitrary = do
     l <- arrayToList <$> Gen.arrayOf1 QuickCheck.arbitrary
