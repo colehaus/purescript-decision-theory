@@ -37,7 +37,9 @@ dominatesStrongly rows =
   where
     Tuple row1 row2 = NonEmpty.unzip rows
 
-strengthen :: forall cell. (NonEmptyList (Tuple cell cell) -> Boolean) -> NonEmptyList (Tuple cell cell) -> Boolean
+strengthen ::
+  forall cell.
+  (NonEmptyList (Tuple cell cell) -> Boolean) -> NonEmptyList (Tuple cell cell) -> Boolean
 strengthen f rows = f rows && not (f $ map Tuple.swap rows)
 
 -- | A functionally identical variant of `dominatesStrongly` in which the implementation emphasizes that it is the asymmetric version of `dominatesWeakly`
@@ -115,6 +117,7 @@ maximin'' ::
 maximin'' toCell =
   optimismPessimism toCell $ unsafePartialBecause "Statically known to be valid `Proportion`"  $ Maybe.fromJust $ Proportion.mk zero
 
+-- | Like turning `>=` into `compare`
 weakRelationToOrdering ::
   forall cell.
   (NonEmptyList (Tuple cell cell) -> Boolean) -> NonEmptyList (Tuple cell cell) -> Maybe Ordering
@@ -127,6 +130,7 @@ weakRelationToOrdering f rows =
   where
     Tuple row1 row2 = NonEmpty.unzip rows
 
+-- | Find all rows which return `true` when compared to every other other row by the given relation
 extremal ::
   forall rowId columnId cell.
   Ord columnId => Ord rowId =>
@@ -165,4 +169,6 @@ indifference toCell rows =
   maximizesExpectedUtility toCell $ NonEmpty.zip (Unfold1.replicate1 len prob) rows
   where
     len = Foldable.length rows
-    prob = unsafePartialBecause "Statically known to be valid `Proportion`" $ fromJust $ Proportion.mk $ 1.0 / Int.toNumber len
+    prob =
+      unsafePartialBecause "Statically known to be valid `Proportion`" $
+      fromJust $ Proportion.mk $ 1.0 / Int.toNumber len
