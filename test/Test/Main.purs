@@ -2,6 +2,7 @@ module Test.Main where
 
 import DecisionTheory.Ignorance
 import DecisionTheory.Properties
+import DecisionTheory.Utility
 import Prelude
 
 import Control.Algebra.Properties as Prop
@@ -10,8 +11,10 @@ import Data.Either (Either, fromRight)
 import Data.Either as Either
 import Data.Foldable as Foldable
 import Data.Generic.Rep (class Generic)
+import Data.HashSet.Multi (MultiSet)
+import Data.HashSet.Multi as MultiSet
+import Data.Hashable (class Hashable, hash)
 import Data.Int as Int
-import Data.List (List(..))
 import Data.List as List
 import Data.List.NonEmpty (NonEmptyList(..))
 import Data.List.NonEmpty as NonEmpty
@@ -24,8 +27,9 @@ import Data.Proportion as Proportion
 import Data.Proportion.Internal (Proportion(..))
 import Data.Rational (Rational)
 import Data.Rational as Rational
+import Data.Set.NonEmpty as NonEmptySet
 import Data.Table as Table
-import Data.Traversable (traverse, traverse_)
+import Data.Traversable (traverse_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Aff (Aff)
@@ -92,7 +96,7 @@ main = run [consoleReporter] do
               , Tuple (Tuple "row4" "column4") 10
               ]
         minimaxRegret (unsafePartial $ fromRight <<< Table.mk $ Map.fromFoldable cells)
-          `shouldEqual` NonEmptyList (NonEmpty "row3" Nil)
+          `shouldEqual` (NonEmptySet.singleton "row3")
     describe "indifference" do
       it "works for superiority" do
         (ne 1.1 [ 1.0 ]) `listCurry (indifference Proportion.unMk)` (ne 1.2 [ 0.8 ]) `shouldEqual` true
@@ -103,19 +107,19 @@ main = run [consoleReporter] do
 
   describe "Relationships" do
     it "`dominatesStrongly` is `dominatesWeakly` `strengthen`ed" do
-      quickCheck'' $ \(MkListPair a b) ->
+      quickCheck'' $ \(MkMultiSetPair a b) ->
         (listCurry dominatesStrongly) a b == listCurry (strengthen dominatesWeakly) a b <?> show [a, b]
     it "`leximin` is `leximin'`" do
-      quickCheck'' $ \(MkListPair a b) ->
+      quickCheck'' $ \(MkMultiSetPair a b) ->
         listCurry leximin a b === listCurry leximin' a b
     it "`maximin` is `maximin'`" do
-      quickCheck'' $ \(MkListPair a b) ->
+      quickCheck'' $ \(MkMultiSetPair a b) ->
         listCurry maximin a b === listCurry maximin' a b
     it "`maximin` is `maximin''`" do
-      quickCheck'' $ \(MkListPair a b) ->
+      quickCheck'' $ \(MkMultiSetPair a b) ->
         listCurry maximin a b === listCurry (maximin'' (MkSmallNum <<< Rational.fromInt <<< Int.round)) a b
     it "Strong maximin implies strong leximin" do
-      quickCheck'' $ \(MkListPair a b) ->
+      quickCheck'' $ \(MkMultiSetPair a b) ->
         listCurry (strengthen maximin) a b `implies`
         listCurry (strengthen leximin) a b
 
@@ -126,7 +130,6 @@ main = run [consoleReporter] do
         , Antisymmetric
         , Reflexive
         , RowSymmetric
-        , ColumnSymmetric
         , ImpliedByStrictDomination
         , IntervalScale
         , ColumnLinearity
@@ -137,7 +140,6 @@ main = run [consoleReporter] do
         [ Transitive
         , Reflexive
         , RowSymmetric
-        , ColumnSymmetric
         , ImpliedByStrictDomination
         , IntervalScale
         ]
@@ -146,13 +148,13 @@ main = run [consoleReporter] do
         [ Transitive
         , Reflexive
         , RowSymmetric
-        , ColumnSymmetric
         , ImpliedByStrictDomination
         , IntervalScale
         , ColumnDuplication
         ]
     describe "Weak optimism-pessimism" do
       let
+        map g (NonEmpty x xs) = NonEmpty (g x) (MultiSet.map g xs)
         conv =
           bimap
             (Rational.toNumber <<< Newtype.unwrap)
@@ -161,7 +163,6 @@ main = run [consoleReporter] do
         [ Transitive
         , Reflexive
         , RowSymmetric
-        , ColumnSymmetric
         , ImpliedByStrictDomination
         , IntervalScale
         , ColumnDuplication
@@ -172,53 +173,54 @@ main = run [consoleReporter] do
         [ Transitive
         , Reflexive
         , RowSymmetric
-        , ColumnSymmetric
         , ImpliedByStrictDomination
         , IntervalScale
         , ColumnLinearity
         ]
 
-testProperty :: (NonEmptyList (Tuple SmallNum SmallNum) -> Boolean) -> Property -> Spec Unit
+zip ::
+  forall cell.
+  Hashable cell =>
+  NonEmpty MultiSet cell -> NonEmpty MultiSet cell -> NonEmpty MultiSet (Tuple cell cell)
+zip a b = neListToNeMultiSet $ NonEmpty.zip (neMultiSetToNeList a) (neMultiSetToNeList b)
+
+testProperty :: (NonEmpty MultiSet (Tuple SmallNum SmallNum) -> Boolean) -> Property -> Spec Unit
 testProperty rule Transitive =
   it "is transitive" do
-    quickCheck'' $ \(MkListTriple a b c) ->
+    quickCheck'' $ \(MkMultiSetTriple a b c) ->
       Prop.transitive (listCurry rule) a b c <?> show [ a, b, c ]
 testProperty rule Asymmetric =
   it "is asymmetric" do
-    quickCheck'' $ \(MkListPair a b) ->
+    quickCheck'' $ \(MkMultiSetPair a b) ->
       Prop.asymmetric (listCurry rule) a b <?> show [ a, b ]
 testProperty rule Antisymmetric =
   it "is antisymmetric" do
-    quickCheck'' $ \(MkListPair a b) ->
+    quickCheck'' $ \(MkMultiSetPair a b) ->
       Prop.antisymmetric (listCurry rule) a b <?> show [ a, b ]
 testProperty rule Reflexive =
   it "is reflexive" do
     quickCheck'' $ \(a :: NonEmptyList SmallNum) ->
-      Prop.reflexive (listCurry rule) a <?> show [ a ]
+      Prop.reflexive (listCurry rule) (neListToNeMultiSet a) <?> show [ a ]
 testProperty rule RowSymmetric =
   it "is invariant under row relabeling (symmetric)" do
-    quickCheck'' $ \(MkListPair a b) ->
-      rowSymmetry (weakRelationToOrdering rule) (NonEmpty.zip a b) <?> show [ a, b ]
-testProperty rule ColumnSymmetric =
-  it "is invariant under column relabeling (symmetric)" do
-    quickCheck'' $ \(MkListPair a b) ->
-      columnSymmetry rule (NonEmpty.zip a b) <?> show [ a, b ]
+    quickCheck'' $ \(MkMultiSetPair a b) ->
+      rowSymmetry (weakRelationToOrdering rule) (zip a b) <?> show [ a, b ]
 testProperty rule ImpliedByStrictDomination =
   it "is implied by strict domination" do
-    quickCheck'' $ \(MkListPair a b) ->
-      strictDominance rule (NonEmpty.zip a b) <?> show [ a, b ]
+    quickCheck'' $ \(MkMultiSetPair a b) ->
+      strictDominance rule (zip a b) <?> show [ a, b ]
 testProperty rule IntervalScale =
   it "works on an interval scale" do
-    quickCheck'' $ \(MkListPair a b) add mult ->
-      intervalScale rule (NonEmpty.zip a b) add mult <?> show [ a, b ]
+    quickCheck'' $ \(MkMultiSetPair a b) add mult ->
+      intervalScale rule (zip a b) add mult <?> show [ a, b ]
 testProperty rule ColumnLinearity =
   it "is linear in columns" do
-    quickCheck'' $ \(MkListPair a b) (c :: SmallNum) ->
-      columnLinearity rule (NonEmpty.zip a b) c <?> show (Tuple [ a, b ] c)
+    quickCheck'' $ \(MkMultiSetPair a b) (c :: SmallNum) ->
+      columnLinearity rule (zip a b) c <?> show (Tuple [ a, b ] c)
 testProperty rule ColumnDuplication =
   it "is invariant under column duplication" do
-    quickCheck'' $ \(MkListPair a b) ->
-      columnDuplication rule (NonEmpty.zip a b) <?> show [ a, b ]
+    quickCheck'' $ \(MkMultiSetPair a b) ->
+      columnDuplication rule (zip a b) <?> show [ a, b ]
 
 data Property
   = Transitive
@@ -226,7 +228,6 @@ data Property
   | Antisymmetric
   | Reflexive
   | RowSymmetric
-  | ColumnSymmetric
   | ImpliedByStrictDomination
   | IntervalScale
   | ColumnLinearity
@@ -234,15 +235,17 @@ data Property
 
 listCurry ::
   forall cell res.
-  (NonEmptyList (Tuple cell cell) -> res) ->
-  NonEmptyList cell -> NonEmptyList cell -> res
-listCurry rule row1 row2 = rule (NonEmpty.zip row1 row2)
+  Hashable cell =>
+  (NonEmpty MultiSet (Tuple cell cell) -> res) ->
+  NonEmpty MultiSet cell -> NonEmpty MultiSet cell -> res
+listCurry rule row1 row2 =
+  rule (neListToNeMultiSet $ NonEmpty.zip (neMultiSetToNeList row1) (neMultiSetToNeList row2))
 
 fromRightEx :: forall l r. Either l r -> r
 fromRightEx x = unsafePartial $ Either.fromRight x
 
-ne :: forall a. a -> Array a -> NonEmptyList a
-ne x y = NonEmptyList (NonEmpty x (List.fromFoldable y))
+ne :: forall a. Hashable a => a -> Array a -> NonEmpty MultiSet a
+ne x y = NonEmpty x (MultiSet.fromFoldable y)
 
 newtype SmallNum = MkSmallNum Rational
 derive instance eqSmallNum :: Eq SmallNum
@@ -251,28 +254,37 @@ derive instance genericSmallNum :: Generic SmallNum _
 derive instance newtypeSmallNum :: Newtype SmallNum _
 derive newtype instance semiringSmallNum :: Semiring SmallNum
 derive newtype instance ringSmallNum :: Ring SmallNum
+instance hashableSmallNum :: Hashable SmallNum where
+  hash (MkSmallNum r) = hash <<< Rational.toNumber $ r
 instance showSmallNum :: Show SmallNum where
   show (MkSmallNum i) = show i
 instance arbitrarySmallNum :: QuickCheck.Arbitrary SmallNum where
   arbitrary = MkSmallNum <<< Rational.fromInt <$> Gen.chooseInt 1 10
 
-data ListPair = MkListPair (NonEmptyList SmallNum) (NonEmptyList SmallNum)
-instance arbitraryListPair :: QuickCheck.Arbitrary ListPair where
+data MultiSetPair =
+  MkMultiSetPair
+    (NonEmpty MultiSet SmallNum)
+    (NonEmpty MultiSet SmallNum)
+instance arbitraryListPair :: QuickCheck.Arbitrary MultiSetPair where
   arbitrary = do
     l <- arrayToList <$> Gen.arrayOf1 QuickCheck.arbitrary
     r <- toNonEmpty <$> Gen.vectorOf (Foldable.length l) QuickCheck.arbitrary
-    pure $ MkListPair l r
+    pure $ MkMultiSetPair (neListToNeMultiSet l) (neListToNeMultiSet r)
     where
       arrayToList (NonEmpty a as) = NonEmptyList (NonEmpty a (List.fromFoldable as))
       toNonEmpty a = unsafePartial $ Maybe.fromJust <<< NonEmpty.fromFoldable $ a
 
-data ListTriple = MkListTriple (NonEmptyList SmallNum) (NonEmptyList SmallNum) (NonEmptyList SmallNum)
+data ListTriple =
+  MkMultiSetTriple
+    (NonEmpty MultiSet SmallNum)
+    (NonEmpty MultiSet SmallNum)
+    (NonEmpty MultiSet SmallNum)
 instance arbitraryListTriple :: QuickCheck.Arbitrary ListTriple where
   arbitrary = do
     l <- arrayToList <$> Gen.arrayOf1 QuickCheck.arbitrary
     m <- toNonEmpty <$> Gen.vectorOf (Foldable.length l) QuickCheck.arbitrary
     r <- toNonEmpty <$> Gen.vectorOf (Foldable.length l) QuickCheck.arbitrary
-    pure $ MkListTriple l m r
+    pure $ MkMultiSetTriple (neListToNeMultiSet l) (neListToNeMultiSet m) (neListToNeMultiSet r)
     where
       arrayToList (NonEmpty a as) = NonEmptyList (NonEmpty a (List.fromFoldable as))
       toNonEmpty a = unsafePartial $ Maybe.fromJust <<< NonEmpty.fromFoldable $ a

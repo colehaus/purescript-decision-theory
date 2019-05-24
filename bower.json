@@ -11,12 +11,15 @@
   "dependencies": {
     "purescript-colehaus-properties": "^0.3.2",
     "purescript-lists": "^5.3.0",
+    "purescript-multiset-hashed": "../purescript-multiset-hashed",
+    "purescript-naturals": "^3.0.0",
     "purescript-partial": "^2.0.0",
     "purescript-prelude": "^4.1.0",
-    "purescript-tuples": "^5.1.0",
     "purescript-partial-order": "^0.0.1",
     "purescript-proportion": "^0.3.0",
     "purescript-tables": "../purescript-tables",
+    "purescript-tuples": "^5.1.0",
+    "purescript-unordered-collections": "^1.8.0",
     "purescript-rationals": "^5.0.0"
   },
   "devDependencies": {
