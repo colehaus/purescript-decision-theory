@@ -11,6 +11,8 @@ import Data.Either (Either, fromRight)
 import Data.Either as Either
 import Data.Foldable as Foldable
 import Data.Generic.Rep (class Generic)
+import Data.HashMap as HashMap
+import Data.HashSet as HashSet
 import Data.HashSet.Multi (MultiSet)
 import Data.HashSet.Multi as MultiSet
 import Data.Hashable (class Hashable, hash)
@@ -18,16 +20,14 @@ import Data.Int as Int
 import Data.List as List
 import Data.List.NonEmpty (NonEmptyList(..))
 import Data.List.NonEmpty as NonEmpty
-import Data.Map as Map
 import Data.Maybe as Maybe
 import Data.Newtype (class Newtype)
 import Data.Newtype as Newtype
-import Data.NonEmpty (NonEmpty(..))
+import Data.NonEmpty (NonEmpty(..), fromNonEmpty, (:|))
 import Data.Proportion as Proportion
 import Data.Proportion.Internal (Proportion(..))
 import Data.Rational (Rational)
 import Data.Rational as Rational
-import Data.Set.NonEmpty as NonEmptySet
 import Data.Table as Table
 import Data.Traversable (traverse_)
 import Data.Tuple (Tuple(..))
@@ -95,8 +95,9 @@ main = run [consoleReporter] do
               , Tuple (Tuple "row4" "column3") 30
               , Tuple (Tuple "row4" "column4") 10
               ]
-        minimaxRegret (unsafePartial $ fromRight <<< Table.mk $ Map.fromFoldable cells)
-          `shouldEqual` (NonEmptySet.singleton "row3")
+            table = unsafePartial $ fromRight <<< Table.mk $ HashMap.fromFoldable cells
+        fromNonEmpty HashSet.insert (minimaxRegret table) `shouldEqual`
+        fromNonEmpty HashSet.insert ("row3" :| HashSet.empty)
     describe "indifference" do
       it "works for superiority" do
         (ne 1.1 [ 1.0 ]) `listCurry (indifference Proportion.unMk)` (ne 1.2 [ 0.8 ]) `shouldEqual` true
