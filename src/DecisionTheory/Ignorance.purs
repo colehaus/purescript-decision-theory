@@ -29,7 +29,6 @@ import Data.Table (Table)
 import Data.Table as Table
 import Data.Tuple (Tuple(..))
 import Data.Tuple as Tuple
-import Data.Unfoldable1 as Unfold1
 import Partial.Unsafe (unsafePartialBecause)
 import Prelude as Prelude
 
@@ -40,29 +39,25 @@ zipActions ::
 zipActions m1 m2 =
   MultiSet.fromFoldable <<< HashMap.values $ HashMap.intersectionWith Tuple m1 m2
 
-dominatesWeakly ::
-  forall cell.
-  PartialOrd cell =>
-  NonEmpty MultiSet (Tuple cell cell) -> Boolean
-dominatesWeakly rows = Foldable.all ((==) true) (NonEmpty.zipWith (>=) row1 row2)
-  where
-    Tuple row1 row2 = NonEmpty.unzip <<< neMultiSetToNeList $ rows
+type PairOfRows cell = NonEmpty MultiSet (Tuple cell cell)
 
-dominatesStrongly ::
-  forall cell.
-  PartialOrd cell =>
-  NonEmpty MultiSet (Tuple cell cell) -> Boolean
-dominatesStrongly rows =
-  Foldable.all ((==) true) (NonEmpty.zipWith (>=) row1 row2) &&
-  Foldable.any ((==) true) (NonEmpty.zipWith (>) row1 row2)
+dominatesWeakly :: forall cell. PartialOrd cell => PairOfRows cell -> Boolean
+dominatesWeakly rows = Foldable.and (NonEmpty.zipWith (>=) row1 row2)
   where
-    Tuple row1 row2 = NonEmpty.unzip <<< neMultiSetToNeList $ rows
+    Tuple row1 row2 = unzipNeMultiSet rows
+
+dominatesStrongly :: forall cell. PartialOrd cell => PairOfRows cell -> Boolean
+dominatesStrongly rows =
+  Foldable.and (NonEmpty.zipWith (>=) row1 row2) &&
+  Foldable.or (NonEmpty.zipWith (>) row1 row2)
+  where
+    Tuple row1 row2 = unzipNeMultiSet rows
 
 strengthen ::
   forall cell.
   Hashable cell =>
-  (NonEmpty MultiSet (Tuple cell cell) -> Boolean) ->
-  NonEmpty MultiSet (Tuple cell cell) -> Boolean
+  (PairOfRows cell -> Boolean) ->
+  PairOfRows cell -> Boolean
 strengthen f rows = f rows && not (f $ map Tuple.swap rows)
   where
     map g (NonEmpty x xs) = NonEmpty (g x) (MultiSet.map g xs)
@@ -73,54 +68,54 @@ dominatesStrongly' ::
   forall cell.
   Hashable cell =>
   PartialOrd cell =>
-  NonEmpty MultiSet (Tuple cell cell) -> Boolean
+  PairOfRows cell -> Boolean
 dominatesStrongly' = strengthen dominatesWeakly
 
-leximin :: forall cell. Ord cell => NonEmpty MultiSet (Tuple cell cell) -> Boolean
+leximin :: forall cell. Ord cell => PairOfRows cell -> Boolean
 leximin rows =
     fromMaybe true <<< List.head <<< NonEmpty.mapMaybe keepNonEq $
     NonEmpty.zipWith compare (NonEmpty.sort row1) (NonEmpty.sort row2)
   where
-    Tuple row1 row2 = NonEmpty.unzip <<< neMultiSetToNeList $ rows
+    Tuple row1 row2 = unzipNeMultiSet rows
     keepNonEq GT = Just true
     keepNonEq LT = Just false
     keepNonEq EQ = Nothing
 
-maximin :: forall cell. Ord cell => NonEmpty MultiSet (Tuple cell cell) -> Boolean
+maximin :: forall cell. Ord cell => PairOfRows cell -> Boolean
 maximin rows = Foldable1.minimum row1 Prelude.>= Foldable1.minimum row2
   where
-    Tuple row1 row2 = NonEmpty.unzip <<< neMultiSetToNeList $ rows
+    Tuple row1 row2 = unzipNeMultiSet rows
 
-maximax :: forall cell. Ord cell => NonEmpty MultiSet (Tuple cell cell) -> Boolean
+maximax :: forall cell. Ord cell => PairOfRows cell -> Boolean
 maximax rows = Foldable1.maximum row1 Prelude.>= Foldable1.maximum row2
   where
-    Tuple row1 row2 = NonEmpty.unzip <<< neMultiSetToNeList $ rows
+    Tuple row1 row2 = unzipNeMultiSet rows
 
 -- | Functionally identical variant of `leximin` in which the implementation emphasizes the
 -- relationship between leximin and maximin
-leximin' :: forall cell. Ord cell => NonEmpty MultiSet (Tuple cell cell) -> Boolean
+leximin' :: forall cell. Ord cell => PairOfRows cell -> Boolean
 leximin' = ximin identity
 
 -- | Functionally identical variant of `maximin` in which the implementation emphasizes the
 -- relationship between leximin and maximin
-maximin' :: forall cell. Ord cell => NonEmpty MultiSet (Tuple cell cell) -> Boolean
+maximin' :: forall cell. Ord cell => PairOfRows cell -> Boolean
 maximin' = ximin (NonEmpty.singleton <<< NonEmpty.head)
 
 -- | Functionally identical variant of `maximax` in which the implementation emphasizes the
 -- relationship between leximin and maximax
-maximax' :: forall cell. Ord cell => NonEmpty MultiSet (Tuple cell cell)-> Boolean
+maximax' :: forall cell. Ord cell => PairOfRows cell -> Boolean
 maximax' = ximin (NonEmpty.singleton <<< NonEmpty.last)
 
 -- | Helper function which is used to implement both `leximin'` and `maximin`'
 ximin ::
   forall cell.
   Ord cell =>
-  (forall a. NonEmptyList a -> NonEmptyList a) -> NonEmpty MultiSet (Tuple cell cell) -> Boolean
+  (forall a. NonEmptyList a -> NonEmptyList a) -> PairOfRows cell -> Boolean
 ximin f rows =
     fromMaybe true <<< List.head <<< NonEmpty.mapMaybe keepNonEq <<< f $
     NonEmpty.zipWith compare (NonEmpty.sort row1) (NonEmpty.sort row2)
   where
-    Tuple row1 row2 = NonEmpty.unzip <<< neMultiSetToNeList $ rows
+    Tuple row1 row2 = unzipNeMultiSet rows
     keepNonEq GT = Just true
     keepNonEq LT = Just false
     keepNonEq EQ = Nothing
@@ -128,18 +123,18 @@ ximin f rows =
 optimismPessimism ::
   forall n cell.
   Ord cell => Semiring cell => Ring n =>
-  (n -> cell) -> Proportion n -> NonEmpty MultiSet (Tuple cell cell) -> Boolean
-optimismPessimism toCell α rows = val row1 >= val row2
+  (n -> cell) -> Proportion n -> PairOfRows cell -> Boolean
+optimismPessimism toCell α rows = value row1 >= value row2
   where
-    Tuple row1 row2 = NonEmpty.unzip <<< neMultiSetToNeList $ rows
-    val row =
+    Tuple row1 row2 = unzipNeMultiSet rows
+    value row =
       toCell (Proportion.unMk α) * Foldable1.maximum row +
       toCell (one - Proportion.unMk α) * Foldable1.minimum row
 
 maximax'' ::
   forall cell.
   Ord cell => Semiring cell =>
-  (Number -> cell) -> NonEmpty MultiSet (Tuple cell cell) -> Boolean
+  (Number -> cell) -> PairOfRows cell -> Boolean
 maximax'' toCell =
   optimismPessimism toCell <<<
   unsafePartialBecause "Statically known to be valid `Proportion`" $
@@ -149,7 +144,7 @@ maximax'' toCell =
 maximin'' ::
   forall cell.
   Ord cell => Semiring cell =>
-  (Number -> cell) -> NonEmpty MultiSet (Tuple cell cell) -> Boolean
+  (Number -> cell) -> PairOfRows cell -> Boolean
 maximin'' toCell =
   optimismPessimism toCell <<<
   unsafePartialBecause "Statically known to be valid `Proportion`"  $
@@ -160,8 +155,8 @@ maximin'' toCell =
 weakRelationToOrdering ::
   forall cell.
   Hashable cell =>
-  (NonEmpty MultiSet (Tuple cell cell) -> Boolean) ->
-  NonEmpty MultiSet (Tuple cell cell) -> Maybe Ordering
+  (PairOfRows cell -> Boolean) ->
+  PairOfRows cell -> Maybe Ordering
 weakRelationToOrdering f rows =
   case Tuple (f rows) (f <<< neListToNeMultiSet $ NonEmpty.zip row2 row1) of
     Tuple true true -> Just EQ
@@ -169,14 +164,14 @@ weakRelationToOrdering f rows =
     Tuple false true -> Just LT
     Tuple false false -> Nothing
   where
-    Tuple row1 row2 = NonEmpty.unzip <<< neMultiSetToNeList $ rows
+    Tuple row1 row2 = unzipNeMultiSet rows
 
 -- | Find all rows which return `true` when compared to every other other row by the given
 -- relation
 extremal ::
   forall rowId columnId cell.
   Hashable cell => Hashable columnId => Hashable rowId =>
-  (NonEmpty MultiSet (Tuple cell cell) -> Boolean) ->
+  (PairOfRows cell -> Boolean) ->
   Table rowId columnId cell -> HashSet rowId
 extremal relation tbl =
   HashSet.fromArray <<< HashMap.keys <<<
@@ -198,43 +193,39 @@ extremal relation tbl =
       fromJust <<< NEL.fromFoldable $
       rows
     rows = Table.rows' tbl
-    first f (Tuple a b) = Tuple (f a) b
 
 minimaxRegret ::
   forall rowId columnId cell.
-  Hashable cell => Hashable columnId => Hashable rowId => Ord cell => Ring cell =>
+  Hashable cell => Hashable columnId => Hashable rowId =>
+  Ord cell => Ring cell =>
   Table rowId columnId cell -> NonEmpty HashSet rowId
 minimaxRegret tbl =
-  unsafePartialBecause "There should always be at least one minimum" $
-  fromJust <<< neSet <<<
-  extremal minimax $ regrets
+  fromJustMin <<< neSet <<< extremal minimax $ regrets
   where
-    regrets =
-      unsafePartialBecause "`Regretify` preserves table validity" $ fromRight $
-      Table.mapColumns regretify tbl
+    regrets = fromRightRegret <<< Table.mapColumns regretify $ tbl
+      where
+        regretify cells = map (best - _) cells
+          where
+            best = fromJustZero <<< Foldable.maximum $ cells
     minimax rows = Foldable1.maximum row1 Prelude.<= Foldable1.maximum row2
       where
-        Tuple row1 row2 = NonEmpty.unzip <<< neMultiSetToNeList $ rows
-    regretify cells = map (\c -> best - c) cells
-      where
-        best =
-          unsafePartialBecause
-            """If the table is empty,
-            there will be zero column instead of columns with zero cells""" $
-          fromJust <<< Foldable.maximum $ cells
+        Tuple row1 row2 = unzipNeMultiSet rows
+    fromJustZero x =
+      unsafePartialBecause
+        """If the table is empty,
+        there will be zero columns instead of columns with zero cells""" $ fromJust x
+    fromRightRegret x =
+      unsafePartialBecause "`Regretify` preserves table validity" $ fromRight x
+    fromJustMin x =
+      unsafePartialBecause "There should always be at least one minimum"  $ fromJust x
 
 indifference ::
   forall cell.
-  Ord cell => Hashable cell => Semiring cell =>
-  (Proportion Number -> cell) -> NonEmpty MultiSet (Tuple cell cell) -> Boolean
+  Hashable cell =>
+  Ord cell => Semiring cell =>
+  (Proportion Number -> cell) -> PairOfRows cell -> Boolean
 indifference toCell rows =
   maximizesExpectedUtility toCell <<<
-  neListToNeMultiSet <<<
-  NonEmpty.zip (Unfold1.replicate1 len prob) <<<
-  neMultiSetToNeList $ rows
+  neMultiSetMap (Tuple prob) $ rows
   where
-    len = Foldable.length rows
-    prob =
-      MkHashProp <<<
-      unsafePartialBecause "Statically known to be valid `Proportion`" $
-      fromJust $ Proportion.mk $ 1.0 / Int.toNumber len
+    prob = unsafeMkHashProp $ 1.0 / Int.toNumber (Foldable.length rows)

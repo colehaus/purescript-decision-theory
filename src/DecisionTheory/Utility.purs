@@ -11,8 +11,12 @@ import Data.Hashable (class Hashable)
 import Data.List as List
 import Data.List.NonEmpty (NonEmptyList(..))
 import Data.List.NonEmpty as NonEmpty
-import Data.Maybe (Maybe)
+import Data.Maybe (Maybe, fromJust)
 import Data.NonEmpty (NonEmpty(..))
+import Data.Proportion as Proportion
+import Data.Tuple (Tuple)
+import DecisionTheory.Risk (HashProp(..))
+import Partial.Unsafe (unsafePartialBecause)
 
 neMultiSetToNeList :: forall a. NonEmpty MultiSet a -> NonEmptyList a
 neMultiSetToNeList (NonEmpty a m) =
@@ -30,3 +34,20 @@ neSet :: forall a. Hashable a => HashSet a -> Maybe (NonEmpty HashSet a)
 neSet =
   map (\x -> NonEmpty x.head (HashSet.fromFoldable x.tail)) <<< Array.uncons <<<
   HashSet.toArray
+
+unzipNeMultiSet ::
+  forall a b.
+  NonEmpty MultiSet (Tuple a b) -> Tuple (NonEmptyList a) (NonEmptyList b)
+unzipNeMultiSet = NonEmpty.unzip <<< neMultiSetToNeList
+
+neMultiSetMap ::
+  forall a b.
+  Hashable b =>
+  (a -> b) -> NonEmpty MultiSet a -> NonEmpty MultiSet b
+neMultiSetMap f (NonEmpty a as) = NonEmpty (f a) (MultiSet.map f as)
+
+unsafeMkHashProp :: forall n. Ord n => Semiring n => n -> HashProp n
+unsafeMkHashProp p =
+  MkHashProp <<<
+  unsafePartialBecause "Statically known to be valid `Proportion`" $
+  fromJust <<< Proportion.mk $ p
